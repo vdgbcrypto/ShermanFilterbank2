@@ -61,3 +61,19 @@ custom editor ever disappears again after a build, check this include first.
   leakage as core to the tone; currently not emulated (clean SVF). Future phase.
 - **LFO waveform**: only sine implemented; saw/triangle + AR-retrigger pending.
 - **ADSR + envelope-follower MODE switch**: currently env-follower only.
+
+### L9 — Resonance was INVERTED (raising Reso weakened it) + low-Reso distortion
+The Chamberlin SVF form `hp = x - lp - q*bp` uses q as DAMPING (~1/Q): low q =
+strong resonance, high q = gentle. The maps `0.1+reso*1.7` and `0.5+reso*3.0`
+RAISED q with Reso, so the peak got weaker — user heard "Reso has little
+effect". Fix: `rq = 2.0 - reso*1.7` (reso 0 -> q 2.0 gentle, reso 1 -> q 0.3
+strong peak), clamped `q < 0.9/fc` for stability. Also fixed input gain 3.0->1.5
+and soft-limited output to kill the low-Reso clipping distortion. dsp_test now
+asserts peak(reso=1) > 1.3 * peak(reso=0).
+
+### L10 — 3-way switches behaved like 2-way (middle unclickable)
+SegmentedSwitch used child TextButtons; the middle button's hit area was not
+reliably receiving clicks, so only extremes were selectable (LP or HP, never
+BP). Fix: rewrote SegmentedSwitch as a single self-drawn component that
+hit-tests by x-position (mouseDown -> idx = x/width * n), no child buttons.
+LP/BP/HP, Serial/Mixed/Parallel, Off/1/2/1.5/0.5 all now selectable.

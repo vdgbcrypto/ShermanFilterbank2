@@ -2,10 +2,10 @@
 
 #include "PluginProcessor.h"
 
-// A discrete toggle-switch control: a row of mutually-exclusive buttons bound
-// directly to an AudioParameterChoice. Shows the selected position; reflects
-// host/automation changes via the APVTS listener. Used for all the Sherman
-// "selector" params (Mode, Correction, Routing, Harmonics, Oversample).
+// A discrete toggle-switch control: a single component that draws N segments
+// and hit-tests by x-position (no child buttons -> no overlap/click ambiguity).
+// Bound directly to an AudioParameterChoice; reflects host/automation via the
+// APVTS listener. Used for all the Sherman "selector" params.
 class SegmentedSwitch  : public juce::Component,
                           private juce::AudioProcessorValueTreeState::Listener
 {
@@ -18,45 +18,55 @@ public:
     {
         state = &apvts;
         pid = paramID;
-        for (int i = 0; i < items.size(); ++i)
-        {
-            auto* b = buttons.add (new juce::TextButton (items[i]));
-            b->setClickingTogglesState (false);
-            b->onClick = [this, i] { state->getParameter (pid)->setValueNotifyingHost ((float) i); };
-            addAndMakeVisible (b);
-        }
+        labels = items;
         state->addParameterListener (pid, this);
-        updateButtons ((int) (state->getRawParameterValue (pid)->load() + 0.5f));
+        setIndex ((int) (state->getRawParameterValue (pid)->load() + 0.5f));
     }
 
     ~SegmentedSwitch() override { if (state) state->removeParameterListener (pid, this); }
 
-    void resized() override
+    void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds();
-        int n = buttons.size();
-        int w = r.getWidth() / n;
+        const juce::Colour green (0xff00ff41);
+        const juce::Colour dark  (0xff223322);
+        const juce::Colour outline (0xff557755);
+        auto r = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (outline);
+        g.drawRoundedRectangle (r, 4.0f, 1.0f);
+        int n = labels.size();
+        float w = r.getWidth() / (float) n;
         for (int i = 0; i < n; ++i)
-            buttons[i]->setBounds (r.getX() + i * w, r.getY(), w - 2, r.getHeight());
+        {
+            juce::Rectangle<float> seg (r.getX() + i * w, r.getY(), w, r.getHeight());
+            g.setColour (i == current ? green : dark);
+            g.fillRoundedRectangle (seg.reduced (1.0f), 3.0f);
+            g.setColour (i == current ? juce::Colours::black : green);
+            g.setFont (juce::Font (10.0f, juce::Font::bold));
+            g.drawText (labels[i], seg, juce::Justification::centred, true);
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        int n = juce::jmax (1, labels.size());
+        int idx = (int) ((e.x / (float) getWidth()) * (float) n);
+        idx = juce::jlimit (0, n - 1, idx);
+        setIndex (idx);
+        state->getParameter (pid)->setValueNotifyingHost ((float) idx);
     }
 
     void parameterChanged (const juce::String&, float v) override
     {
-        updateButtons ((int) (v + 0.5f));
+        setIndex ((int) (v + 0.5f));
     }
 
 private:
-    void updateButtons (int idx)
-    {
-        const juce::Colour green (0xff00ff41);
-        const juce::Colour dark  (0xff223322);
-        for (int i = 0; i < buttons.size(); ++i)
-            buttons[i]->setColour (juce::TextButton::buttonColourId, (i == idx) ? green : dark);
-    }
+    void setIndex (int i) { if (i != current) { current = i; repaint(); } }
 
     juce::AudioProcessorValueTreeState* state = nullptr;
     juce::String pid;
-    juce::OwnedArray<juce::TextButton> buttons;
+    juce::StringArray labels;
+    int current = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SegmentedSwitch)
 };
 

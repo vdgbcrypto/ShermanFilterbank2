@@ -135,9 +135,15 @@ double ShermanPluginAudioProcessor::filterVoice (double x, int ch, bool isFilter
     double fc = cutoff / (mSampleRate * (double) mOSFactor);
     if (fc > 0.49) fc = 0.49;
 
-    // Resonance feedback coefficient. Raised ceiling (max ~1.8) so partial
-    // self-oscillation is audible even at unity drive (was 1.25 -> too tame).
-    double rq = 0.1 + smReso * 1.7;                     // 0.1 .. ~1.8
+    // Resonance feedback coefficient. In the Chamberlin SVF form hp = x-lp-q*bp,
+    // q is the DAMPING (≈ 1/Q): LOW q = strong resonance, HIGH q = gentle.
+    // So map reso UP -> q DOWN: reso=0 -> q=2.0 (gentle), reso=1 -> q=0.3 (strong
+    // peak). Stability clamp keeps q*f < ~0.9 so it never explodes into harsh
+    // self-osc distortion. (Earlier map raised q with reso -> resonance got
+    // WEAKER; user reported "Reso has little effect".)
+    double rq = 2.0 - smReso * 1.7;
+    if (fc > 0.001)
+        rq = juce::jmin (rq, 0.9 / fc - 0.05); // upper bound: stay stable vs cutoff
 
     processFilterStage (s->lp, s->bp, s->hp, fc, rq, x);
 
@@ -266,9 +272,9 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             mEnv = envelopeStep (x);
 
             // Fixed input gain: the hardware input stage is always hot, so the
-            // filter stays responsive even at Drive=0 (Drive then adds EXTRA
-            // distortion on top, rather than being required to hear anything).
-            const double kInputGain = 3.0; // ~+9.5 dB
+            // filter stays responsive even at Drive=0. Kept moderate (1.5 ~ +3.5 dB)
+            // so the signal does not clip/distort at low Reso (was 3.0 -> too hot).
+            const double kInputGain = 1.5; // ~+3.5 dB
             double d = driveSignal (x * kInputGain, mSmDrive);
 
             // Oversampled dual-filter voice with input FM + decimation.
@@ -320,7 +326,10 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             mBypassMix += (mSmBypass - mBypassMix) * mParamSmoothCoef;
             y = (1.0 - mBypassMix) * y + mBypassMix * x;
 
-            data[sample] = (float) juce::jlimit (-1.0, 1.0, y);
+            // Soft-limit final output so resonance/self-osc peaks don't hard-clip
+            // into harsh distortion (gentler than jlimit at the rails).
+            y = softClip (y);
+            data[sample] = (float) y;
         }
     }
 }

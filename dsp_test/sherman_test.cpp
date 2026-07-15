@@ -70,13 +70,19 @@ int main()
         if(!ok) return 1;
     }
 
-    // Resonance matters.
+    // Resonance must be clearly audible: peak output at reso=1 must exceed
+    // reso=0 by a meaningful margin (a real resonant peak), and stay bounded.
     {
         SVF a1{},a2{};
-        double r0=0,r1=0;
-        for (int i=0;i<N;++i){ r0=voice(in[i],a1,1000.0/sr,0.1,0.0); r1=voice(in[i],a2,1000.0/sr,1.7,0.0); }
-        bool ok = std::fabs(r0-r1)>1e-4;
-        printf("reso_changes=%s\n", ok?"YES":"NO");
+        double peak0=0, peak1=0;
+        for (int i=0;i<N;++i){
+            double y0 = voice(in[i],a1,1000.0/sr,2.0,0.0);  // reso=0 -> rq=2.0 (gentle)
+            double y1 = voice(in[i],a2,1000.0/sr,0.3,0.0);  // reso=1 -> rq=0.3 (strong peak)
+            peak0 = std::max(peak0, std::fabs(y0));
+            peak1 = std::max(peak1, std::fabs(y1));
+        }
+        bool ok = (peak1 > peak0 * 1.3) && peak1 < 4.0; // audible peak, not exploding
+        printf("reso_changes=%s (peak0=%.3f peak1=%.3f)\n", ok?"YES":"NO", peak0, peak1);
         if(!ok) return 1;
     }
 
