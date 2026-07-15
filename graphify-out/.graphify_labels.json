@@ -1,1 +1,0 @@
-{"0": "ShermanPluginAudioProcessor", "1": "PluginProcessor.cpp", "2": "PluginEditor.cpp", "3": "changeProgramName", "4": "processBlock", "5": "sherman_juce_plugin", "6": "createPluginFilter", "7": "createEditor", "8": "ShermanPluginAudioProcessor::isBusesLayoutSupported", "9": "getStateInformation", "10": "JUCE_CALLTYPE createPluginFilter"}

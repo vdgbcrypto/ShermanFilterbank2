@@ -5,3 +5,5 @@ cfg.log
 Source/graphify-out/
 *.obj
 build/*.exe
+Source/graphify-out/
+graphify-out/
