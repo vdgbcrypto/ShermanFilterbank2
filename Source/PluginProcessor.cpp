@@ -113,7 +113,9 @@ double ShermanPluginAudioProcessor::envelopeStep (double input)
 
 // Full single-filter voice at one (oversampled) sample, with morph + correction.
 // One 2-pole multimode SVF section (12 dB/oct, matching the hardware).
-double ShermanPluginAudioProcessor::filterVoice (double x, int ch, bool isFilter2)
+// fm = input-sample value used for input-coupled FM of the cutoff (research:
+// the input signal is the default FM source for the filter cutoff).
+double ShermanPluginAudioProcessor::filterVoice (double x, int ch, bool isFilter2, double fm)
 {
     double smFreq  = isFilter2 ? mSmFreq2Eff : mSmCut1;
     double smReso  = isFilter2 ? mSmReso2  : mSmReso1;
@@ -126,6 +128,9 @@ double ShermanPluginAudioProcessor::filterVoice (double x, int ch, bool isFilter
     // top of the knob above audible range and squishing the usable sweep into
     // the middle -> Freq knob felt dead outside ~0.35..0.66.)
     double cutoff = 20.0 * std::pow (10.0, smFreq * 3.0);
+    // Input FM: the research flags the input signal as the default FM source for
+    // the cutoff. Modulate cutoff by the (smoothed) input sample value.
+    cutoff *= (1.0 + fm * mSmFM * 4.0);
     cutoff *= (1.0 + mEnv * mSmEnvAmt * 6.0);            // envelope follower -> cutoff
     cutoff *= (1.0 + mLFOVal * mSmLFODepth * 0.5);       // LFO -> cutoff
     if (cutoff < 20.0) cutoff = 20.0;
@@ -231,6 +236,7 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         mSmDecay  += (decayP->load()   - mSmDecay)  * mParamSmoothCoef;
         mSmLFO    += (lfoRateP->load() - mSmLFO)    * mParamSmoothCoef;
         mSmLFODepth += (lfoDepP->load() - mSmLFODepth) * mParamSmoothCoef;
+        mSmFM     += (fmAmtP->load()  - mSmFM)     * mParamSmoothCoef;
         mSmFreq2  += (freq2P->load()   - mSmFreq2)  * mParamSmoothCoef;
         mSmReso2  += (reso2P->load()   - mSmReso2)  * mParamSmoothCoef;
         mSmMode2  += ((double) mode2Idx * 0.5 - mSmMode2) * mParamSmoothCoef;
@@ -283,10 +289,7 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             {
                 double frac = (double) k / (double) mOSFactor;
                 double xs = (k == 0) ? d : (d * (1.0 - frac) + driveSignal (xnext, mSmDrive) * frac);
-                // Input FM: modulate cutoff via sample value (research: input is default FM source).
-                double fm = xs * 0.15 * (fmAmtP->load());
-                (void) fm; // folded into cutoff via env-style term; keep param live
-                accF1 += filterVoice (xs, ch, false);
+                accF1 += filterVoice (xs, ch, false, xs); // fm = input sample
             }
             double f1 = accF1 / (double) mOSFactor;
 
@@ -295,7 +298,7 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             {
                 double frac = (double) k / (double) mOSFactor;
                 double xs = (k == 0) ? d : (d * (1.0 - frac) + driveSignal (xnext, mSmDrive) * frac);
-                accF2 += filterVoice (xs, ch, true);
+                accF2 += filterVoice (xs, ch, true, xs);  // fm = input sample
             }
             double f2 = accF2 / (double) mOSFactor;
 
@@ -307,7 +310,7 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
                 {
                     double frac = (double) k / (double) mOSFactor;
                     double xs = (k == 0) ? f1 : (f1 * (1.0 - frac) + xnext * frac);
-                    a2 += filterVoice (xs, ch, true);
+                    a2 += filterVoice (xs, ch, true, f1);  // serial: F2 FM'd by F1
                 }
                 serialOut = a2 / (double) mOSFactor;
             }

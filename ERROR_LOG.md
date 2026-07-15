@@ -77,3 +77,14 @@ reliably receiving clicks, so only extremes were selectable (LP or HP, never
 BP). Fix: rewrote SegmentedSwitch as a single self-drawn component that
 hit-tests by x-position (mouseDown -> idx = x/width * n), no child buttons.
 LP/BP/HP, Serial/Mixed/Parallel, Off/1/2/1.5/0.5 all now selectable.
+
+### L11 — Input FM knob (fmAmt) wired into the cutoff
+The fmAmt param existed but was a no-op (dead `(void) fm` placeholder). Per the
+research, the input signal is the default FM source for the filter cutoff.
+Fix: filterVoice() now takes an `fm` sample arg; cutoff *= (1 + fm*mSmFM*4).
+mSmFM smoothed from the fmAmt param. F1 FM'd by the input sample; in serial
+routing, F2 is FM'd by the F1 output. dsp_test asserts FM changes the output
+for a time-varying signal (fm_wired=YES).
+NOTE: the sibling subagent reverted the header's filterVoice() declaration
+(3-arg) during this session, breaking the 4-arg .cpp — re-declared with the
+`double fm` param. If FM stops working after a build, check the header decl.

@@ -106,8 +106,23 @@ int main()
         SVF aL{},aH{}; double sLP=0,sHP=0;
         for (int i=0;i<N;++i){ sLP+=std::fabs(voice(in[i],aL,1000.0/sr,0.3,0.0)); sHP+=std::fabs(voice(in[i],aH,1000.0/sr,0.3,1.0)); }
         bool ok = sHP > sLP*2.0;
-        printf("multimode_ok=%s\n", ok?"YES":"NO");
-        if(!ok) return 1;
+        // Input FM: a varying (non-DC) input should change the filtered output when
+        // fmAmt > 0 vs fmAmt = 0, at identical settings. Mirrors filterVoice's
+        // cutoff *= (1 + fm * mSmFM * 4).
+        {
+            SVF a0{}, aFM{};
+            const double fc = 1000.0/sr, rq = 0.5, mFM = 0.5;
+            double diff = 0.0;
+            for (int i=0;i<N;++i){
+                double inp = in[i];
+                double y0 = voice(inp, a0,  fc, rq, 0.0);                 // fm = 0
+                double yFM = voice(inp, aFM, fc*(1.0+inp*mFM*4.0), rq, 0.0); // fm = inp, mFM=0.5
+                diff += std::fabs(y0 - yFM);
+            }
+            bool ok = diff > 1e-3; // FM must alter the output for a time-varying signal
+            printf("fm_wired=%s (diff=%.4f)\n", ok?"YES":"NO", diff);
+            if(!ok) return 1;
+        }
     }
 
     printf("PASS=YES\n");

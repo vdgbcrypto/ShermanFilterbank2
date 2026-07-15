@@ -61,7 +61,7 @@ private:
 
     // Per-sample smoothed parameters.
     double mSmCut1 = 0.5, mSmReso1 = 0.0, mSmMode1 = 0.0, mSmCorr1 = 0.0, mSmDrive = 0.0;
-    double mSmEnvAmt = 0.0, mSmDecay = 0.3, mSmLFO = 0.0, mSmLFODepth = 0.0;
+    double mSmEnvAmt = 0.0, mSmDecay = 0.3, mSmLFO = 0.0, mSmLFODepth = 0.0, mSmFM = 0.0;
     double mSmFreq2 = 0.5, mSmReso2 = 0.0, mSmMode2 = 0.0, mSmCorr2 = 0.0;
     double mHarmRatio = 1.0; bool mHarmOn = false; // Harmonics: F2 = F1 / ratio when on
     double mSmRouting = 0.0, mSmWet = 1.0, mSmBypass = 0.0;
@@ -83,7 +83,7 @@ private:
     double softClip (double x) const;
     double driveSignal (double x, double drive) const;
     void processFilterStage (double& lp, double& bp, double& hp, double f, double q, double x);
-    double filterVoice (double x, int ch, bool isFilter2);
+    double filterVoice (double x, int ch, bool isFilter2, double fm);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ShermanPluginAudioProcessor)
 };
