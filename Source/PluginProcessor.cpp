@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 
 //==============================================================================
 ShermanPluginAudioProcessor::ShermanPluginAudioProcessor()
@@ -10,10 +11,15 @@ ShermanPluginAudioProcessor::ShermanPluginAudioProcessor()
           auto freqRange = juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f);
           // log-ish cutoff: 20 Hz .. ~20 kHz mapped from 0..1 in the DSP.
 
+          juce::StringArray modeItems;  modeItems.add ("LP");  modeItems.add ("BP");  modeItems.add ("HP");
+          juce::StringArray corrItems;  corrItems.add ("Steepen"); corrItems.add ("Off"); corrItems.add ("Notch");
+          juce::StringArray routeItems; routeItems.add ("Serial"); routeItems.add ("Mixed"); routeItems.add ("Parallel");
+          juce::StringArray harmItems;  harmItems.add ("Off"); harmItems.add ("1"); harmItems.add ("2"); harmItems.add ("1.5"); harmItems.add ("0.5");
+
           params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"freq1", 1}, "Freq 1", freqRange, 0.5f));
           params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"reso1", 1}, "Reso 1", 0.0f, 1.0f, 0.2f));
-          params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"mode1", 1}, "Mode 1 (LP-BP-HP)", 0.0f, 1.0f, 0.0f));
-          params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"corr1", 1}, "Correction 1", -1.0f, 1.0f, 0.0f));
+          params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"mode1", 1}, "Mode 1", modeItems, 0));
+          params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"corr1", 1}, "Correction 1", corrItems, 1));
 
           params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"drive", 1}, "Input Drive", 0.0f, 1.0f, 0.0f));
 
@@ -26,11 +32,11 @@ ShermanPluginAudioProcessor::ShermanPluginAudioProcessor()
 
           params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"freq2", 1}, "Freq 2", freqRange, 0.5f));
           params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"reso2", 1}, "Reso 2", 0.0f, 1.0f, 0.2f));
-          params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"mode2", 1}, "Mode 2 (LP-BP-HP)", 0.0f, 1.0f, 0.0f));
-          params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"corr2", 1}, "Correction 2", -1.0f, 1.0f, 0.0f));
-          params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"harm", 1}, "Harmonics (F2->F1 ratio)", 0.0f, 1.0f, 0.0f));
+          params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"mode2", 1}, "Mode 2", modeItems, 0));
+          params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"corr2", 1}, "Correction 2", corrItems, 1));
+          params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"harm", 1}, "Harmonics", harmItems, 0));
 
-          params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"routing", 1}, "Routing (serial-parallel)", 0.0f, 1.0f, 0.0f));
+          params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"routing", 1}, "Routing", routeItems, 0));
           params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"wet", 1}, "Dry/Wet", 0.0f, 1.0f, 1.0f));
           params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID {"bypass", 1}, "Bypass", 0.0f, 1.0f, 0.0f));
 
@@ -190,11 +196,30 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        // Per-sample smoothing of every parameter.
+        // Per-sample smoothing. Selector params are now AudioParameterChoice
+        // (index 0..N); map the index to the DSP float each param expects.
+        int mode1Idx = (int) (mode1P->load() + 0.5f);
+        int corr1Idx = (int) (corr1P->load() + 0.5f);
+        int mode2Idx = (int) (mode2P->load() + 0.5f);
+        int corr2Idx = (int) (corr2P->load() + 0.5f);
+        int routIdx  = (int) (routP->load()  + 0.5f);
+        int harmIdx  = (int) (harmP->load()  + 0.5f);
+
+        // Harmonics: Off=index0 -> disengaged; else F2 = F1 / ratio.
+        mHarmOn = (harmIdx != 0);
+        switch (harmIdx)
+        {
+            case 1: mHarmRatio = 1.0; break;  // unison (F2 = F1)
+            case 2: mHarmRatio = 2.0; break;  // octave down
+            case 3: mHarmRatio = 1.5; break;  // 5th down
+            case 4: mHarmRatio = 0.5; break;  // 2 oct up (F2 = F1*2)
+            default: mHarmRatio = 1.0; break;
+        }
+
         mSmCut1   += (cutoff1P->load() - mSmCut1)   * mParamSmoothCoef;
         mSmReso1  += (reso1P->load()   - mSmReso1)  * mParamSmoothCoef;
-        mSmMode1  += (mode1P->load()   - mSmMode1)  * mParamSmoothCoef;
-        mSmCorr1  += (corr1P->load()   - mSmCorr1)  * mParamSmoothCoef;
+        mSmMode1  += ((double) mode1Idx * 0.5 - mSmMode1) * mParamSmoothCoef; // 0/0.5/1
+        mSmCorr1  += ((double) corr1Idx - 1.0 - mSmCorr1) * mParamSmoothCoef; // -1/0/+1
         mSmDrive  += (driveP->load()   - mSmDrive)  * mParamSmoothCoef;
         mSmEnvAmt += (envAmtP->load()  - mSmEnvAmt) * mParamSmoothCoef;
         mSmDecay  += (decayP->load()   - mSmDecay)  * mParamSmoothCoef;
@@ -202,10 +227,9 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         mSmLFODepth += (lfoDepP->load() - mSmLFODepth) * mParamSmoothCoef;
         mSmFreq2  += (freq2P->load()   - mSmFreq2)  * mParamSmoothCoef;
         mSmReso2  += (reso2P->load()   - mSmReso2)  * mParamSmoothCoef;
-        mSmMode2  += (mode2P->load()   - mSmMode2)  * mParamSmoothCoef;
-        mSmCorr2  += (corr2P->load()   - mSmCorr2)  * mParamSmoothCoef;
-        mSmHarm   += (harmP->load()    - mSmHarm)   * mParamSmoothCoef;
-        mSmRouting += (routP->load()   - mSmRouting) * mParamSmoothCoef;
+        mSmMode2  += ((double) mode2Idx * 0.5 - mSmMode2) * mParamSmoothCoef;
+        mSmCorr2  += ((double) corr2Idx - 1.0 - mSmCorr2) * mParamSmoothCoef;
+        mSmRouting += ((double) routIdx * 0.5 - mSmRouting) * mParamSmoothCoef; // 0/0.5/1
         mSmWet    += (wetP->load()     - mSmWet)    * mParamSmoothCoef;
         mSmBypass += (bypP->load()     - mSmBypass) * mParamSmoothCoef;
 
@@ -215,6 +239,22 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         mLFOVal = std::sin (mLFOPhase * 2.0 * juce::MathConstants<double>::pi);
         // expose for filterVoice
         (void) fmAmtP; // FM folded into drive-coupled path below
+
+        // Harmonics (channel-independent): when engaged, lock F2 cutoff to
+        // F1 / ratio. Cutoff mapping is 20*10^(f01*3) (see filterVoice), invert /3.
+        // Computed once per sample (not per channel) to avoid cross-channel
+        // state coupling (reviewer note on mSmFreq2Eff).
+        {
+            double target2 = mSmFreq2; // 0..1 (free F2)
+            if (mHarmOn)
+            {
+                double f1hz = 20.0 * std::pow (10.0, mSmCut1 * 3.0);
+                double f2hz = f1hz / mHarmRatio;             // ratio>1 lowers pitch
+                f2hz = juce::jlimit (20.0, mSampleRate * 0.49, f2hz);
+                target2 = juce::jlimit (0.0, 1.0, std::log10 (f2hz / 20.0) / 3.0);
+            }
+            mSmFreq2Eff += (target2 - mSmFreq2Eff) * mParamSmoothCoef;
+        }
 
         for (int ch = 0; ch < totalOut; ++ch)
         {
@@ -243,23 +283,6 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
                 accF1 += filterVoice (xs, ch, false);
             }
             double f1 = accF1 / (double) mOSFactor;
-
-            // Harmonics: lock F2 freq to F1 by musical ratio when engaged.
-            if (mSmHarm > 0.001)
-            {
-                double ratio = std::pow (2.0, -mSmHarm * 2.0); // up to 2 oct down
-                double f1hz = 20.0 * std::pow (10.0, mSmCut1 * 4.0);
-                double f2base = 20.0 * std::pow (10.0, mSmFreq2 * 4.0);
-                // blend F2 toward the harmonic-locked frequency
-                double locked = f1hz * ratio;
-                double blended = juce::jlimit (20.0, mSampleRate * 0.49, locked * mSmHarm + f2base * (1.0 - mSmHarm));
-                // express back as 0..1 for filterVoice's internal mapping (approx)
-                mSmFreq2Eff = juce::jlimit (0.0, 1.0, std::log10 (blended / 20.0) / 4.0);
-            }
-            else
-            {
-                mSmFreq2Eff = mSmFreq2;
-            }
 
             double accF2 = 0.0;
             for (int k = 0; k < mOSFactor; ++k)
@@ -305,7 +328,7 @@ void ShermanPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
 //==============================================================================
 juce::AudioProcessorEditor* ShermanPluginAudioProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new ShermanPluginAudioProcessorEditor (*this);
 }
 
 bool ShermanPluginAudioProcessor::hasEditor() const { return true; }

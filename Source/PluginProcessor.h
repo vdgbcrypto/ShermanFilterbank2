@@ -62,7 +62,8 @@ private:
     // Per-sample smoothed parameters.
     double mSmCut1 = 0.5, mSmReso1 = 0.0, mSmMode1 = 0.0, mSmCorr1 = 0.0, mSmDrive = 0.0;
     double mSmEnvAmt = 0.0, mSmDecay = 0.3, mSmLFO = 0.0, mSmLFODepth = 0.0;
-    double mSmFreq2 = 0.5, mSmReso2 = 0.0, mSmMode2 = 0.0, mSmCorr2 = 0.0, mSmHarm = 0.0;
+    double mSmFreq2 = 0.5, mSmReso2 = 0.0, mSmMode2 = 0.0, mSmCorr2 = 0.0;
+    double mHarmRatio = 1.0; bool mHarmOn = false; // Harmonics: F2 = F1 / ratio when on
     double mSmRouting = 0.0, mSmWet = 1.0, mSmBypass = 0.0;
 
     // Filter state (one 2-pole SVF section per filter, 2 channels).

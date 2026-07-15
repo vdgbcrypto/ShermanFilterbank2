@@ -37,7 +37,22 @@ When `harm>0`, F2 cutoff is blended toward `f1 * 2^(-harm*2)` (up to 2 oct
 down) and expressed back into the 0..1 cutoff space (`mSmFreq2Eff`) that
 `filterVoice()` reads. Keeps the dual-filter tracking musical, per hardware.
 
-### Known TODO (not yet implemented)
+### L8 — Selectors are discrete toggle switches, not knobs
+The Mode / Correction / Routing / Harmonics / Oversample params were
+AudioParameterFloat knobs; the user wanted real toggle switches. Converted
+them to AudioParameterChoice (LP/BP/HP, Steepen/Off/Notch, Serial/Mixed/
+Parallel, Off/1/2/1.5/0.5, 1x/4x/8x) and built a custom SegmentedSwitch
+component (mutually-exclusive TextButtons bound to the APVTS, reflecting
+host/automation via a parameter listener). processBlock maps the choice
+index to the DSP float: mode=idx*0.5, corr=idx-1, routing=idx*0.5,
+harm -> mHarmRatio/mHarmOn (F2 = F1/ratio), oversample -> mOSFactor.
+
+### NOTE — recurring include revert
+The `#include "PluginEditor.h"` in PluginProcessor.cpp was reverted twice by
+a concurrent sibling subagent during this session, which made createEditor()
+fall back to GenericAudioProcessorEditor (killing the custom UI) and broke the
+build (C2061 'ShermanPluginAudioProcessorEditor' undeclared). Re-added; if the
+custom editor ever disappears again after a build, check this include first.
 - **Input FM** (`fmAmt`): param exists and is "live" but is not yet folded into
   the cutoff in `filterVoice()`. The envelope-follower already provides
   input-coupled cutoff modulation; FM should modulate cutoff by the sample
