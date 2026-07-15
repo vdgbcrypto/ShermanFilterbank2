@@ -1,0 +1,7 @@
+build/
+*.bat
+build.log
+cfg.log
+Source/graphify-out/
+*.obj
+build/*.exe
